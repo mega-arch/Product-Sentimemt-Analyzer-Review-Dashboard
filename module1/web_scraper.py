@@ -304,22 +304,29 @@ print("Starting Flipkart Scraper...")
 all_data = []
 product_id = 1
 
+# Updated categories with 25 products per category
 categories = {
     'Laptop': 'https://www.flipkart.com/search?q=laptops&page=1',
     'Mobile': 'https://www.flipkart.com/search?q=mobiles&page=1', 
     'Tablet': 'https://www.flipkart.com/search?q=tablets&page=1',
     'Headphones': 'https://www.flipkart.com/search?q=headphones&page=1',
     'Smartwatch': 'https://www.flipkart.com/search?q=smartwatch&page=1',
-    'Camera': 'https://www.flipkart.com/search?q=camera&page=1'
+    'Camera': 'https://www.flipkart.com/search?q=camera&page=1',
+    'Television': 'https://www.flipkart.com/search?q=television&page=1',
+    'Printer': 'https://www.flipkart.com/search?q=printer&page=1',
+    'Speaker': 'https://www.flipkart.com/search?q=speaker&page=1',
+    'Gaming': 'https://www.flipkart.com/search?q=gaming%20laptop&page=1',
+    'Refrigerator': 'https://www.flipkart.com/search?q=refrigerator&page=1',
+    'Washing_Machine': 'https://www.flipkart.com/search?q=washing%20machine&page=1'
 }
 
-max_products_per_category = 50
+max_products_per_category = 25
 
 for category_name, category_url in categories.items():
     print(f"\n=== Processing {category_name} ===")
     product_links = get_product_links(category_url, max_products_per_category)
     
-    pages_to_try = 5
+    pages_to_try = 3
     current_page = 2
     while len(product_links) < max_products_per_category and current_page <= pages_to_try:
         print(f"Only found {len(product_links)} products, trying page {current_page}...")
@@ -329,7 +336,7 @@ for category_name, category_url in categories.items():
         current_page += 1
     
     for i, link in enumerate(product_links):
-        print(f"\n--- Product {i+1}/{len(product_links)} ---")
+        print(f"\n--- {category_name} - Product {i+1}/{len(product_links)} ---")
         try:
             product_info = extract_product_info(link)
             all_data.append({
@@ -349,11 +356,8 @@ for category_name, category_url in categories.items():
             print(f"Error scraping product {i+1}: {e}")
             continue
 
-    if len(all_data) >= 300:
-        print(f"Reached target of 300 products. Stopping...")
-        break
-
 print(f"\nScraping completed! Total products: {len(all_data)}")
+print(f"Expected: {len(categories) * max_products_per_category} products")
 save_to_csv(all_data)
 driver.quit()
 print("Scraping finished!")
