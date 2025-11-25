@@ -1,56 +1,52 @@
 from flask import Blueprint, request, jsonify
 import sqlite3
-from utils.preprocessing import preprocess_review   # <-- Added preprocessing import
+from utils.preprocessing import preprocess_review
 
 db_bp = Blueprint("database", __name__)
 
-DB_PATH = "sentiment.db"
+DB_PATH = "database.db"
 
 
-# -----------------------------------
+# -----------------------------
 # DATABASE CONNECTION
-# -----------------------------------
+# -----------------------------
 def get_connection():
-    return sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
-# -----------------------------------
+# -----------------------------
 # PRODUCT APIs
-# -----------------------------------
-
+# -----------------------------
 @db_bp.route("/add_product", methods=["POST"])
 def add_product():
     data = request.json
-    name = data.get("name")
-    category = data.get("category")
-    price = data.get("price")
-    rating = data.get("rating")
+    name = data.get("product_name")
+    url = data.get("product_url")
 
-    if not name:
-        return jsonify({"error": "Product name is required"}), 400
+    if not (name and url):
+        return jsonify({"error": "product_name and product_url are required"}), 400
 
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "INSERT INTO products (name, category, price, rating) VALUES (?, ?, ?, ?)",
-        (name, category, price, rating),
+        "INSERT INTO products (product_name, product_url) VALUES (?, ?)",
+        (name, url)
     )
-
     conn.commit()
     conn.close()
+
     return jsonify({"message": "Product added successfully!"})
 
 
 @db_bp.route("/get_products", methods=["GET"])
 def get_products():
     conn = get_connection()
-    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-
     cursor.execute("SELECT * FROM products")
     products = [dict(row) for row in cursor.fetchall()]
-
     conn.close()
     return jsonify(products)
 
@@ -58,47 +54,48 @@ def get_products():
 @db_bp.route("/search_products", methods=["GET"])
 def search_products():
     keyword = request.args.get("keyword", "").lower()
+    if not keyword:
+        return jsonify({"products": []})
 
     conn = get_connection()
-    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-
     cursor.execute(
-        "SELECT * FROM products WHERE LOWER(name) LIKE ?",
-        (f"%{keyword}%",),
+        "SELECT * FROM products WHERE LOWER(product_name) LIKE ?",
+        (f"%{keyword}%",)
     )
-
     results = [dict(row) for row in cursor.fetchall()]
     conn.close()
-
-    if results:
-        return jsonify({"message": "success", "products": results})
-    return jsonify({"message": "No products found", "products": []})
+    return jsonify({"products": results})
 
 
-# -----------------------------------
+# -----------------------------
 # REVIEW APIs
-# -----------------------------------
-
+# -----------------------------
 @db_bp.route("/add_review", methods=["POST"])
 def add_review():
     data = request.json
     product_id = data.get("product_id")
-    review_text = data.get("review_text")
-    sentiment = data.get("sentiment")
+    raw_review = data.get("raw_review")
 
-    if not (product_id and review_text and sentiment):
-        return jsonify({"error": "Missing required fields"}), 400
+    if not (product_id and raw_review):
+        return jsonify({"error": "product_id and raw_review are required"}), 400
 
-    # PROCESS TEXT BEFORE STORING
-    cleaned_text = preprocess_review(review_text)
+    # preprocess review
+    cleaned_review = preprocess_review(raw_review)
+
+    # predict sentiment
+    sentiment_label, sentiment_score = predict_sentiment(cleaned_review)
 
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "INSERT INTO reviews (product_id, review_text, sentiment) VALUES (?, ?, ?)",
-        (product_id, cleaned_text, sentiment),
+        """
+        INSERT INTO reviews
+        (product_id, raw_review, cleaned_review, sentiment_label, sentiment_score)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (product_id, raw_review, cleaned_review, sentiment_label, sentiment_score)
     )
 
     conn.commit()
@@ -109,12 +106,9 @@ def add_review():
 @db_bp.route("/get_reviews", methods=["GET"])
 def get_reviews():
     conn = get_connection()
-    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-
     cursor.execute("SELECT * FROM reviews")
     reviews = [dict(row) for row in cursor.fetchall()]
-
     conn.close()
     return jsonify(reviews)
 
@@ -122,22 +116,15 @@ def get_reviews():
 @db_bp.route("/search_reviews", methods=["GET"])
 def search_reviews():
     product_id = request.args.get("product_id")
-
     if not product_id:
-        return jsonify({"message": "Provide product_id"}), 400
+        return jsonify({"reviews": []})
 
     conn = get_connection()
-    conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
-
     cursor.execute(
         "SELECT * FROM reviews WHERE product_id = ?",
-        (product_id,),
+        (product_id,)
     )
-
     results = [dict(row) for row in cursor.fetchall()]
     conn.close()
-
-    if results:
-        return jsonify({"message": "success", "reviews": results})
-    return jsonify({"message": "No reviews found", "reviews": []})
+    return jsonify({"reviews": results})
