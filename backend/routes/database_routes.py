@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 import sqlite3
 from utils.preprocessing import preprocess_review
+from utils.sentiment_analysis import predict_sentiment 
 
 db_bp = Blueprint("database", __name__)
 
