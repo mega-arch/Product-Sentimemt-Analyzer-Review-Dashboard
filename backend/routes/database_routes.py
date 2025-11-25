@@ -1,172 +1,143 @@
 from flask import Blueprint, request, jsonify
-import mysql.connector
-from mysql.connector import Error
+import sqlite3
+from utils.preprocessing import preprocess_review   # <-- Added preprocessing import
 
-db_bp = Blueprint('database', __name__)
+db_bp = Blueprint("database", __name__)
 
-# MySQL connection configuration
-DB_CONFIG = {
-    'host': 'localhost',
-    'user': 'root',
-    'password': '1234',
-    'database': 'sentiment_db'
-}
+DB_PATH = "sentiment.db"
 
-# Function to get a connection
+
+# -----------------------------------
+# DATABASE CONNECTION
+# -----------------------------------
 def get_connection():
-    try:
-        conn = mysql.connector.connect(**DB_CONFIG)
-        return conn
-    except Error as e:
-        print(f"Error connecting to MySQL: {e}")
-        return None
+    return sqlite3.connect(DB_PATH)
 
-# -------------------------------
-# CREATE TABLES
-# -------------------------------
-def create_tables():
-    conn = get_connection()
-    if conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS products (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                product_name VARCHAR(255)
-            )
-        """)
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS reviews (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                product_name VARCHAR(255),
-                review TEXT,
-                sentiment VARCHAR(20)
-            )
-        """)
-        conn.commit()
-        cursor.close()
-        conn.close()
 
-create_tables()
-
-# ===============================
+# -----------------------------------
 # PRODUCT APIs
-# ===============================
+# -----------------------------------
 
-# Add product
-@db_bp.route('/add_product', methods=['POST'])
+@db_bp.route("/add_product", methods=["POST"])
 def add_product():
     data = request.json
-    product_name = data.get('product_name')
-    if not product_name:
-        return jsonify({"error": "Missing product_name"}), 400
+    name = data.get("name")
+    category = data.get("category")
+    price = data.get("price")
+    rating = data.get("rating")
+
+    if not name:
+        return jsonify({"error": "Product name is required"}), 400
 
     conn = get_connection()
-    if conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO products (product_name) VALUES (%s)",
-            (product_name,)
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return jsonify({"message": "Product added successfully"})
-    return jsonify({"error": "Database connection failed"}), 500
+    cursor = conn.cursor()
 
-# Get all products
-@db_bp.route('/get_products', methods=['GET'])
+    cursor.execute(
+        "INSERT INTO products (name, category, price, rating) VALUES (?, ?, ?, ?)",
+        (name, category, price, rating),
+    )
+
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Product added successfully!"})
+
+
+@db_bp.route("/get_products", methods=["GET"])
 def get_products():
     conn = get_connection()
-    if conn:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM products")
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return jsonify(rows)
-    return jsonify({"error": "Database connection failed"}), 500
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
-# Search products
-@db_bp.route('/search_products', methods=['GET'])
+    cursor.execute("SELECT * FROM products")
+    products = [dict(row) for row in cursor.fetchall()]
+
+    conn.close()
+    return jsonify(products)
+
+
+@db_bp.route("/search_products", methods=["GET"])
 def search_products():
-    keyword = request.args.get('keyword', '').lower()
-    if not keyword:
-        return jsonify({"message": "Provide a search keyword", "products": []})
+    keyword = request.args.get("keyword", "").lower()
 
     conn = get_connection()
-    if conn:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute(
-            "SELECT * FROM products WHERE LOWER(product_name) LIKE %s",
-            ("%" + keyword + "%",)
-        )
-        results = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        if not results:
-            return jsonify({"message": "No products found", "products": []})
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT * FROM products WHERE LOWER(name) LIKE ?",
+        (f"%{keyword}%",),
+    )
+
+    results = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    if results:
         return jsonify({"message": "success", "products": results})
-    return jsonify({"error": "Database connection failed"}), 500
+    return jsonify({"message": "No products found", "products": []})
 
-# ===============================
+
+# -----------------------------------
 # REVIEW APIs
-# ===============================
+# -----------------------------------
 
-# Add review
-@db_bp.route('/add_review', methods=['POST'])
+@db_bp.route("/add_review", methods=["POST"])
 def add_review():
     data = request.json
-    product_name = data.get('product_name')
-    review = data.get('review_text')
-    sentiment = data.get('sentiment')
+    product_id = data.get("product_id")
+    review_text = data.get("review_text")
+    sentiment = data.get("sentiment")
 
-    if not (product_name and review and sentiment):
-        return jsonify({"error": "Missing data"}), 400
+    if not (product_id and review_text and sentiment):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    # PROCESS TEXT BEFORE STORING
+    cleaned_text = preprocess_review(review_text)
 
     conn = get_connection()
-    if conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT INTO reviews (product_name, review_text, sentiment) VALUES (%s, %s, %s)",
-            (product_name, review, sentiment)
-        )
-        conn.commit()
-        cursor.close()
-        conn.close()
-        return jsonify({"message": "Review added successfully"})
-    return jsonify({"error": "Database connection failed"}), 500
+    cursor = conn.cursor()
 
-# Get all reviews
-@db_bp.route('/get_reviews', methods=['GET'])
+    cursor.execute(
+        "INSERT INTO reviews (product_id, review_text, sentiment) VALUES (?, ?, ?)",
+        (product_id, cleaned_text, sentiment),
+    )
+
+    conn.commit()
+    conn.close()
+    return jsonify({"message": "Review added successfully!"})
+
+
+@db_bp.route("/get_reviews", methods=["GET"])
 def get_reviews():
     conn = get_connection()
-    if conn:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute("SELECT * FROM reviews")
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        return jsonify(rows)
-    return jsonify({"error": "Database connection failed"}), 500
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
 
-# Search reviews by product
-@db_bp.route('/search_reviews', methods=['GET'])
+    cursor.execute("SELECT * FROM reviews")
+    reviews = [dict(row) for row in cursor.fetchall()]
+
+    conn.close()
+    return jsonify(reviews)
+
+
+@db_bp.route("/search_reviews", methods=["GET"])
 def search_reviews():
-    product_name = request.args.get('product_name', '').lower()
-    if not product_name:
-        return jsonify({"message": "Provide a product_name", "reviews": []})
+    product_id = request.args.get("product_id")
+
+    if not product_id:
+        return jsonify({"message": "Provide product_id"}), 400
 
     conn = get_connection()
-    if conn:
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute(
-            "SELECT * FROM reviews WHERE LOWER(product_name) LIKE %s",
-            ("%" + product_name + "%",)
-        )
-        results = cursor.fetchall()
-        cursor.close()
-        conn.close()
-        if not results:
-            return jsonify({"message": "No reviews found", "reviews": []})
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute(
+        "SELECT * FROM reviews WHERE product_id = ?",
+        (product_id,),
+    )
+
+    results = [dict(row) for row in cursor.fetchall()]
+    conn.close()
+
+    if results:
         return jsonify({"message": "success", "reviews": results})
-    return jsonify({"error": "Database connection failed"}), 500
+    return jsonify({"message": "No reviews found", "reviews": []})
