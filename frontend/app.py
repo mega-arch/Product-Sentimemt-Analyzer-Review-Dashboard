@@ -1,11 +1,14 @@
 import streamlit as st
+import unicodedata
+
 from services.api import (
     search_product,
     get_reviews,
     compute_sentiment_summary,
     compute_statistics
 )
-import unicodedata
+
+from visualization import visualize_reviews  # ← Added visualization import
 
 st.set_page_config(page_title="Sentiment Dashboard", layout="wide")
 st.title("📊 Sentiment Analysis Dashboard")
@@ -18,7 +21,7 @@ if st.button("Search"):
         st.warning("Enter a product name.")
         st.stop()
 
-    # Normalize query: remove weird unicode chars and extra spaces
+    # Normalize input
     normalized_query = unicodedata.normalize("NFKD", query).replace("\xa0", " ").strip()
 
     # Search products
@@ -34,9 +37,9 @@ if st.button("Search"):
         st.error("❌ No product found.")
         st.stop()
 
-    # Take the first matched product
+    # Take the first product
     product = products[0]
-    product_id = product.get("product_id") or product.get("id")  # handle different backend formats
+    product_id = product.get("product_id") or product.get("id")
 
     if not product_id:
         st.error("❌ Product ID not found.")
@@ -45,7 +48,7 @@ if st.button("Search"):
     st.success(f"Found product: {product.get('product_name', 'Unknown')} (ID: {product_id})")
 
     # -------------------------------
-    # Get reviews
+    # Get Reviews
     reviews_response = get_reviews(product_id)
 
     if "error" in reviews_response:
@@ -55,7 +58,7 @@ if st.button("Search"):
     reviews = reviews_response.get("reviews", [])
 
     # -------------------------------
-    # Compute sentiment summary
+    # Sentiment Summary
     sentiment = compute_sentiment_summary(reviews)
 
     st.header("🧠 Sentiment Summary")
@@ -65,7 +68,7 @@ if st.button("Search"):
     col3.metric("😞 Negative", sentiment.get("negative", 0))
 
     # -------------------------------
-    # Compute review statistics
+    # Review Statistics
     stats = compute_statistics(reviews)
 
     st.header("📊 Review Statistics")
@@ -75,7 +78,11 @@ if st.button("Search"):
     colC.metric("📉 Negative %", f"{stats.get('negative_percent', 0)}%")
 
     # -------------------------------
-    # Customer Reviews
+    # 🔥 Visualizations Section
+    visualize_reviews(reviews)
+
+    # -------------------------------
+    # Customer Reviews Section
     st.header("📝 Customer Reviews")
 
     if not reviews:
@@ -90,7 +97,8 @@ if st.button("Search"):
             )
             st.markdown(
                 f"""
-                <div style='padding:12px;margin-bottom:12px;border-radius:10px;background:{color}'>
+                <div style='padding:10px;margin-bottom:10px;border-radius:8px;
+                background:{color}; font-size:14px;'>
                     <b>{sentiment_label.upper()}</b><br>
                     {r.get("raw_review", "")}
                 </div>
