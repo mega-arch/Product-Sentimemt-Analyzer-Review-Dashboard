@@ -23,12 +23,10 @@ def sentiment_pie_chart(reviews):
         values='Count',
         title="Sentiment Distribution",
         color='Sentiment',
-        color_discrete_map={'positive':'green', 'neutral':'gray', 'negative':'red'}
+        color_discrete_map={'positive':'pink'}
     )
     st.plotly_chart(fig, use_container_width=True)
 
-
-# -------------------------------
 # 2️⃣ Sentiment trend line over time (if 'date' exists)
 def sentiment_trend_line(reviews):
     if not reviews:
