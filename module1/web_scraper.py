@@ -304,7 +304,7 @@ print("Starting Flipkart Scraper...")
 all_data = []
 product_id = 1
 
-# Updated categories with 25 products per category
+
 categories = {
     'Laptop': 'https://www.flipkart.com/search?q=laptops&page=1',
     'Mobile': 'https://www.flipkart.com/search?q=mobiles&page=1', 
